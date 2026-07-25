@@ -220,10 +220,22 @@ function irregularityForLevel(level) {
   return 0.45 + 0.4 * t;
 }
 
+// מספר "אצטרובלים" (רצועות תאים נפרדות בשוליים סביב הבלוב המרכזי) — כמו
+// ברצועות הקטנות שרואים בתמונת ההשראה מסביב לגוש הראשי. עולה בהדרגה עם הרמה.
+function satelliteCountForLevel(level) {
+  return Math.min(4, Math.floor(level / 15));
+}
+
 function buildLevel(level) {
-  const cols = colsForLevel(level);
-  const rows = rowsForLevel(level, cols);
+  const blobCols = colsForLevel(level);
+  const blobRows = rowsForLevel(level, blobCols);
   const rng = createRng(hashSeed('shape-' + level));
-  const shapeMask = generateBlobShape(cols, rows, rng, irregularityForLevel(level));
-  return generateLevel(level, cols, rows, shapeMask);
+  const { mask, cols, rows } = buildShapeWithSatellites(
+    blobCols,
+    blobRows,
+    rng,
+    irregularityForLevel(level),
+    satelliteCountForLevel(level)
+  );
+  return generateLevel(level, cols, rows, mask);
 }

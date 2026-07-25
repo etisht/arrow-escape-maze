@@ -1,13 +1,13 @@
 const Game = (function () {
   let canvas, ctx;
   let levelData = null;
-  let alive = new Set(); // תאים שעדיין נחשבים "בלוח" מבחינה לוגית (חוסמים מסלולים)
-  let cellByKey = new Map(); // key -> {x,y,dir}
+  let alivePieceIdx = new Set(); // אינדקסים של חלקים שעדיין נשארים בלוח
+  let remainingCells = new Set(); // איחוד תאי כל החלקים החיים (לחסימת קרניים ולתצוגת התקדמות)
   let cellSize = 0;
   let offsetX = 0;
   let offsetY = 0;
-  let fadingOut = new Map(); // key -> {dir, start} — הוסרו לוגית, עדיין באנימציית החלקה החוצה (ויזואלי בלבד)
-  let shaking = new Map(); // key -> {start} — נחסמו, עדיין בלוח, מרעידים
+  let fadingOut = new Map(); // pieceIdx -> {dir, start} — הוסר לוגית, עדיין באנימציית החלקה החוצה
+  let shaking = new Map(); // pieceIdx -> {start} — נחסם, עדיין בלוח, מרעיד
   let rafId = null;
   let onWin = null;
   let currentLevel = 1;
@@ -28,8 +28,8 @@ const Game = (function () {
   function loadLevel(level) {
     currentLevel = level;
     levelData = buildLevel(level);
-    alive = new Set(levelData.cells.map((c) => c.key));
-    cellByKey = new Map(levelData.cells.map((c) => [c.key, c]));
+    alivePieceIdx = new Set(levelData.pieces.map((_, i) => i));
+    remainingCells = new Set(Object.keys(levelData.cellToPieceIndex));
     fadingOut.clear();
     shaking.clear();
     won = false;
@@ -72,24 +72,29 @@ const Game = (function () {
   function handlePointerDown(e) {
     if (!levelData || won) return;
     const key = keyFromPoint(e.clientX, e.clientY);
-    if (!alive.has(key)) return; // כבר הוסר (או באנימציית יציאה)
-    if (shaking.has(key)) return; // כבר מרעיד, אל תכפיל
+    const idx = levelData.cellToPieceIndex[key];
+    if (idx === undefined) return;
+    if (!alivePieceIdx.has(idx)) return; // כבר הוסר (או באנימציית יציאה)
+    if (shaking.has(idx)) return; // כבר מרעיד, אל תכפיל
 
-    const cell = cellByKey.get(key);
-    const dir = DIRECTIONS.find((d) => d.name === cell.dir);
-    // alive משמש כאן גם כקבוצת החסימה - תאים שכבר הוסרו לוגית (fadingOut) לא כלולים בו,
-    // כך שהקלקה הבאה תמיד מחושבת נכון גם אם עדיין רצה אנימציה על תא קודם
-    const clear = isRayClear(cell.x, cell.y, dir, levelData.shapeMask, levelData.cols, levelData.rows, alive);
+    const piece = levelData.pieces[idx];
+    const head = piece.cells[piece.cells.length - 1];
+    const dir = DIRECTIONS.find((d) => d.name === piece.exitDir);
+    // מחריגים את תאי החלק עצמו מקבוצת החסימה - הם עומדים להשתחרר יחד איתו,
+    // כך שהבדיקה תמיד תואמת בדיוק למה שהובטח בזמן היצירה
+    const blockingView = { has: (k) => remainingCells.has(k) && !piece.keySet.has(k) };
+    const clear = isRayClear(head.x, head.y, dir, levelData.shapeMask, levelData.cols, levelData.rows, blockingView);
 
     if (clear) {
-      alive.delete(key);
-      fadingOut.set(key, { dir, start: performance.now(), x: cell.x, y: cell.y, dirName: cell.dir });
-      if (alive.size === 0 && !won) {
+      alivePieceIdx.delete(idx);
+      for (const k of piece.keySet) remainingCells.delete(k);
+      fadingOut.set(idx, { dir, start: performance.now() });
+      if (remainingCells.size === 0 && !won) {
         won = true;
         if (onWin) onWin(currentLevel);
       }
     } else {
-      shaking.set(key, { start: performance.now() });
+      shaking.set(idx, { start: performance.now() });
     }
   }
 
@@ -111,47 +116,69 @@ const Game = (function () {
     if (!levelData) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (const key of alive) {
-      const cell = cellByKey.get(key);
+    for (const idx of alivePieceIdx) {
+      const piece = levelData.pieces[idx];
       let dx = 0, color = ARROW_COLOR;
-      const shake = shaking.get(key);
+      const shake = shaking.get(idx);
       if (shake) {
         const p = (now - shake.start) / SHAKE_MS;
         if (p >= 1) {
-          shaking.delete(key);
+          shaking.delete(idx);
         } else {
           dx = Math.sin(p * Math.PI * 6) * cellSize * 0.12;
           color = BLOCKED_COLOR;
         }
       }
-      drawArrow(cell.x, cell.y, cell.dir, dx, 0, 1, color);
+      drawPiece(piece, dx, 0, 1, color);
     }
 
     const finishedFades = [];
-    for (const [key, anim] of fadingOut) {
+    for (const [idx, anim] of fadingOut) {
       const p = Math.min(1, (now - anim.start) / SLIDE_MS);
       const eased = p * p;
       const dx = anim.dir.dx * cellSize * 1.8 * eased;
       const dy = anim.dir.dy * cellSize * 1.8 * eased;
       const alpha = 1 - p;
-      drawArrow(anim.x, anim.y, anim.dirName, dx, dy, alpha, '#3d6cf0');
-      if (p >= 1) finishedFades.push(key);
+      drawPiece(levelData.pieces[idx], dx, dy, alpha, '#3d6cf0');
+      if (p >= 1) finishedFades.push(idx);
     }
-    for (const key of finishedFades) fadingOut.delete(key);
+    for (const idx of finishedFades) fadingOut.delete(idx);
   }
 
-  function drawArrow(gx, gy, dirName, dx, dy, alpha, color) {
+  function drawPiece(piece, dx, dy, alpha, color) {
+    for (let i = 0; i < piece.cells.length - 1; i++) {
+      drawConnector(piece.cells[i], piece.cells[i + 1], dx, dy, alpha, color);
+    }
+    const head = piece.cells[piece.cells.length - 1];
+    const dir = DIRECTIONS.find((d) => d.name === piece.exitDir);
+    drawArrowHead(head.x, head.y, dir, dx, dy, alpha, color);
+  }
+
+  function drawConnector(a, b, dx, dy, alpha, color) {
+    const ax = offsetX + (a.x + 0.5) * cellSize + dx;
+    const ay = offsetY + (a.y + 0.5) * cellSize + dy;
+    const bx = offsetX + (b.x + 0.5) * cellSize + dx;
+    const by = offsetY + (b.y + 0.5) * cellSize + dy;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.1, cellSize * 0.1);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawArrowHead(gx, gy, dir, dx, dy, alpha, color) {
     const cx = offsetX + (gx + 0.5) * cellSize + dx;
     const cy = offsetY + (gy + 0.5) * cellSize + dy;
     const len = cellSize * 0.34;
     // רצפות מינימום כדי שכיוון החץ יישאר קריא גם ברשתות צפופות מאוד
     const headSize = Math.max(2.4, cellSize * 0.24);
-
-    let ang = 0;
-    if (dirName === 'up') ang = -Math.PI / 2;
-    else if (dirName === 'down') ang = Math.PI / 2;
-    else if (dirName === 'left') ang = Math.PI;
-    else ang = 0;
+    const ang = Math.atan2(dir.dy, dir.dx);
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -178,11 +205,11 @@ const Game = (function () {
   }
 
   function remainingCount() {
-    return alive.size;
+    return remainingCells.size;
   }
 
   function totalCount() {
-    return levelData ? levelData.cells.length : 0;
+    return levelData ? levelData.totalCells : 0;
   }
 
   function destroy() {

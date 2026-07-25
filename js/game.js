@@ -157,7 +157,28 @@ const Game = (function () {
     }
     const head = cells[cells.length - 1];
     const dir = DIRECTIONS.find((d) => d.name === exitDirName);
-    drawArrowHead(head.x, head.y, dir, dx, dy, alpha, color);
+    // בחלק רב-תאי, החיבור מהתא הקודם כבר "מוביל" לתא הראש — לא מציירים גם
+    // זנב-דמה אחורה מהראש (זה בדיוק מה שיצר קו רפאים שנראה שבור/מנותק)
+    const withBackShaft = cells.length === 1;
+    drawArrowHead(head.x, head.y, dir, dx, dy, alpha, color, withBackShaft);
+    if (cells.length > 1) {
+      // נקודה בתחילת החלק (הזנב) — כדי שיהיה ברור איפה כל חלק מתחיל,
+      // ושלא יתבלבל עם חלק שכן אחר שנוגע בו ויוצר קו רציף למראית עין
+      drawTailDot(cells[0].x, cells[0].y, dx, dy, alpha, color);
+    }
+  }
+
+  function drawTailDot(gx, gy, dx, dy, alpha, color) {
+    const cx = offsetX + (gx + 0.5) * cellSize + dx;
+    const cy = offsetY + (gy + 0.5) * cellSize + dy;
+    const r = Math.max(1.3, cellSize * 0.11);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawConnector(a, b, dx, dy, alpha, color) {
@@ -178,7 +199,7 @@ const Game = (function () {
     ctx.restore();
   }
 
-  function drawArrowHead(gx, gy, dir, dx, dy, alpha, color) {
+  function drawArrowHead(gx, gy, dir, dx, dy, alpha, color, withBackShaft) {
     const cx = offsetX + (gx + 0.5) * cellSize + dx;
     const cy = offsetY + (gy + 0.5) * cellSize + dy;
     const len = cellSize * 0.34;
@@ -196,7 +217,7 @@ const Game = (function () {
     ctx.lineCap = 'round';
 
     ctx.beginPath();
-    ctx.moveTo(-len, 0);
+    ctx.moveTo(withBackShaft ? -len : 0, 0);
     ctx.lineTo(len - headSize * 0.4, 0);
     ctx.stroke();
 

@@ -48,9 +48,10 @@ function shuffleInPlace(arr, rng) {
   }
 }
 
-// מפצל את תאי הצורה ל"חלקים" — הליכות אקראיות של תאים סמוכים (אורתוגונלית),
-// כדי לקבל גם חלקים ישרים/קצרים וגם חלקים מפותלים עם פניות (כמו במשחק המקור)
-function generatePieces(cols, rows, shapeMask, rng, maxLen, continueProb) {
+// מפצל את תאי הצורה ל"חלקים" — הליכות אקראיות של תאים סמוכים (אורתוגונלית).
+// minLen כופה אורך מינימלי (כדי שרוב החלקים יהיו מעבר ליחידה בודדת), ו-turnBias
+// מעדיף לפנות לכיוון חדש בכל צעד כדי לקבל חלקים מפותלים ולא רק קווים ישרים ארוכים
+function generatePieces(cols, rows, shapeMask, rng, minLen, maxLen, continueProb, turnBias) {
   const unassigned = new Set();
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
@@ -67,8 +68,9 @@ function generatePieces(cols, rows, shapeMask, rng, maxLen, continueProb) {
     const [sx, sy] = startKey.split(',').map(Number);
     const path = [{ x: sx, y: sy }];
     unassigned.delete(startKey);
+    let lastDx = null, lastDy = null;
 
-    while (path.length < maxLen && rng() < continueProb) {
+    while (path.length < maxLen && (path.length < minLen || rng() < continueProb)) {
       const last = path[path.length - 1];
       const options = [];
       for (const d of DIRECTIONS4) {
@@ -76,11 +78,20 @@ function generatePieces(cols, rows, shapeMask, rng, maxLen, continueProb) {
         const ny = last.y + d.dy;
         const k = cellKey(nx, ny);
         if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && shapeMask[ny][nx] && unassigned.has(k)) {
-          options.push({ x: nx, y: ny, key: k });
+          options.push({ x: nx, y: ny, key: k, dx: d.dx, dy: d.dy });
         }
       }
       if (options.length === 0) break;
-      const next = rngPick(rng, options);
+
+      let pool = options;
+      if (lastDx !== null) {
+        const turningOptions = options.filter((o) => o.dx !== lastDx || o.dy !== lastDy);
+        if (turningOptions.length > 0 && rng() < turnBias) pool = turningOptions;
+      }
+
+      const next = rngPick(rng, pool);
+      lastDx = next.dx;
+      lastDy = next.dy;
       path.push({ x: next.x, y: next.y });
       unassigned.delete(next.key);
     }
@@ -97,9 +108,14 @@ function difficultyBiasForLevel(level) {
   return Math.min(0.97, 0.5 + 0.47 * t);
 }
 
-// אורך מקסימלי לחלק (1 = חץ בודד כמו בעבר, עד 5 = חלק ארוך ומפותל)
+// אורך מינימלי ומקסימלי לחלק — רוב החלקים אורכם מעל יחידה אחת ומפותלים (יש פנייה),
+// לא רק חץ ישר בודד. חלק בודד (יחידה אחת) נשאר אפשרי רק כשאין ברירה גיאומטרית.
+function pieceMinLenForLevel(level) {
+  return Math.min(4, 2 + Math.floor(level / 20));
+}
+
 function pieceMaxLenForLevel(level) {
-  return Math.min(5, Math.max(1, 1 + Math.floor(level / 8)));
+  return Math.min(7, Math.max(3, 3 + Math.floor(level / 10)));
 }
 
 // מאיזה שלב מתחילים להופיע גם כיווני יציאה באלכסון, בנוסף לישרים
@@ -109,12 +125,14 @@ function allowedDirectionsForLevel(level) {
 
 function generateLevel(level, cols, rows, shapeMask) {
   const rng = createRng(hashSeed('lvl-' + level));
+  const minLen = pieceMinLenForLevel(level);
   const maxLen = pieceMaxLenForLevel(level);
-  const continueProb = 0.55;
+  const continueProb = 0.6;
+  const turnBias = 0.7;
   const allowedDirs = allowedDirectionsForLevel(level);
   const bias = difficultyBiasForLevel(level);
 
-  const pieces = generatePieces(cols, rows, shapeMask, rng, maxLen, continueProb);
+  const pieces = generatePieces(cols, rows, shapeMask, rng, minLen, maxLen, continueProb, turnBias);
   pieces.forEach((p) => {
     p.keySet = new Set(p.cells.map((c) => cellKey(c.x, c.y)));
   });

@@ -141,17 +141,37 @@ function generateLevel(level, cols, rows, shapeMask) {
   pieces.forEach((p) => p.keySet.forEach((k) => remainingCells.add(k)));
   const remainingPieceIdx = new Set(pieces.map((_, i) => i));
 
+  // בודק את כל התאים הפנויים עבור חלק נתון, ומפריד לכיוונים "תקינים" (הצעד
+  // הראשון לא חוזר לתא אחר של אותו חלק) לעומת כל הכיוונים התקינים לוגית
+  function computeDirsForPiece(piece) {
+    const head = piece.cells[piece.cells.length - 1];
+    const blockingView = { has: (k) => remainingCells.has(k) && !piece.keySet.has(k) };
+    const all = [];
+    const noSelfOverlap = [];
+    for (const dir of allowedDirs) {
+      if (!isRayClear(head.x, head.y, dir, shapeMask, cols, rows, blockingView)) continue;
+      all.push(dir);
+      const stepKey = cellKey(head.x + dir.dx, head.y + dir.dy);
+      if (!piece.keySet.has(stepKey)) noSelfOverlap.push(dir);
+    }
+    return { all, noSelfOverlap };
+  }
+
   while (remainingPieceIdx.size > 0) {
-    const candidates = [];
+    // סבב ראשון: רק חלקים עם לפחות כיוון יציאה "נקי" (לא חוזר לגוף עצמו) נחשבים
+    let candidates = [];
     for (const idx of remainingPieceIdx) {
-      const piece = pieces[idx];
-      const head = piece.cells[piece.cells.length - 1];
-      const blockingView = { has: (k) => remainingCells.has(k) && !piece.keySet.has(k) };
-      const validDirs = [];
-      for (const dir of allowedDirs) {
-        if (isRayClear(head.x, head.y, dir, shapeMask, cols, rows, blockingView)) validDirs.push(dir);
+      const { noSelfOverlap } = computeDirsForPiece(pieces[idx]);
+      if (noSelfOverlap.length > 0) candidates.push({ idx, validDirs: noSelfOverlap });
+    }
+
+    // רק אם אף חלק נשאר לא הצליח להשיג כיוון נקי (מבוי סתום אמיתי) —
+    // חוזרים ומאפשרים גם כיוון שחוזר לגוף העצמי, כדי שהיצירה תמיד תצליח
+    if (candidates.length === 0) {
+      for (const idx of remainingPieceIdx) {
+        const { all } = computeDirsForPiece(pieces[idx]);
+        if (all.length > 0) candidates.push({ idx, validDirs: all });
       }
-      if (validDirs.length > 0) candidates.push({ idx, validDirs });
     }
 
     if (candidates.length === 0) {

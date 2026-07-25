@@ -40,19 +40,24 @@ const Game = (function () {
   function resize() {
     if (!levelData) return;
     const wrapper = canvas.parentElement;
-    const cssSize = Math.min(wrapper.clientWidth, wrapper.clientHeight);
+    // מתאים רוחב למסך ומאפשר לגובה לגלוש לגלילה אנכית (כמו במשחק המקורי) —
+    // כך גודל התא נשאר קריא גם ברשתות גדולות, במקום להצטמצם כדי להיכנס לגובה המסך
+    const cssWidth = wrapper.clientWidth;
     const dpr = window.devicePixelRatio || 1;
-    canvas.style.width = cssSize + 'px';
-    canvas.style.height = cssSize + 'px';
-    canvas.width = Math.round(cssSize * dpr);
-    canvas.height = Math.round(cssSize * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const pad = cssSize * 0.03;
-    const usable = cssSize - pad * 2;
-    cellSize = usable / levelData.size;
+    const pad = cssWidth * 0.03;
+    const usable = cssWidth - pad * 2;
+    cellSize = usable / levelData.cols;
     offsetX = pad;
     offsetY = pad;
+
+    const cssHeight = levelData.rows * cellSize + pad * 2;
+
+    canvas.style.width = cssWidth + 'px';
+    canvas.style.height = cssHeight + 'px';
+    canvas.width = Math.round(cssWidth * dpr);
+    canvas.height = Math.round(cssHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   function keyFromPoint(clientX, clientY) {
@@ -74,7 +79,7 @@ const Game = (function () {
     const dir = DIRECTIONS.find((d) => d.name === cell.dir);
     // alive משמש כאן גם כקבוצת החסימה - תאים שכבר הוסרו לוגית (fadingOut) לא כלולים בו,
     // כך שהקלקה הבאה תמיד מחושבת נכון גם אם עדיין רצה אנימציה על תא קודם
-    const clear = isRayClear(cell.x, cell.y, dir, levelData.shapeMask, levelData.size, alive);
+    const clear = isRayClear(cell.x, cell.y, dir, levelData.shapeMask, levelData.cols, levelData.rows, alive);
 
     if (clear) {
       alive.delete(key);
@@ -139,7 +144,8 @@ const Game = (function () {
     const cx = offsetX + (gx + 0.5) * cellSize + dx;
     const cy = offsetY + (gy + 0.5) * cellSize + dy;
     const len = cellSize * 0.34;
-    const headSize = cellSize * 0.16;
+    // רצפות מינימום כדי שכיוון החץ יישאר קריא גם ברשתות צפופות מאוד
+    const headSize = Math.max(2.4, cellSize * 0.24);
 
     let ang = 0;
     if (dirName === 'up') ang = -Math.PI / 2;
@@ -153,7 +159,7 @@ const Game = (function () {
     ctx.globalAlpha = alpha;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = Math.max(2, cellSize * 0.1);
+    ctx.lineWidth = Math.max(1.1, cellSize * 0.1);
     ctx.lineCap = 'round';
 
     ctx.beginPath();

@@ -14,10 +14,10 @@ function cellKey(x, y) {
 
 // בודק אם הקרן מ-(x,y) בכיוון dir חופשית: מותר לעבור רק דרך תאים
 // שאינם ב-blockingSet (או שיצאו מהצורה/מהגריד)
-function isRayClear(x, y, dir, shapeMask, size, blockingSet) {
+function isRayClear(x, y, dir, shapeMask, cols, rows, blockingSet) {
   let nx = x + dir.dx;
   let ny = y + dir.dy;
-  while (nx >= 0 && nx < size && ny >= 0 && ny < size && shapeMask[ny][nx]) {
+  while (nx >= 0 && nx < cols && ny >= 0 && ny < rows && shapeMask[ny][nx]) {
     if (blockingSet.has(cellKey(nx, ny))) return false;
     nx += dir.dx;
     ny += dir.dy;
@@ -25,26 +25,26 @@ function isRayClear(x, y, dir, shapeMask, size, blockingSet) {
   return true;
 }
 
-function difficultyBiasForLevel(level, gridSize) {
-  // מתחיל נמוך יחסית (רמה בינונית) ועולה בהדרגה ככל שהתקרה של גודל הלוח מתקרבת/עוברת
-  const t = Math.min(1, level / 1000);
-  return 0.15 + 0.75 * t;
+function difficultyBiasForLevel(level) {
+  // עולה חד בשלבים הראשונים כדי שכבר סביב שלב 10 יהיה כמעט תמיד רק המהלך
+  // המחויב/המוגבל ביותר זמין (מקסימום תלות-סדר), ואז נשאר קרוב לתקרה
+  const t = Math.min(1, Math.sqrt(level / 8));
+  return Math.min(0.97, 0.5 + 0.47 * t);
 }
 
-function generateLevel(level, size, shapeMask) {
+function generateLevel(level, cols, rows, shapeMask) {
   const rng = createRng(hashSeed('lvl-' + level));
 
   const cells = [];
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
       if (shapeMask[y][x]) cells.push({ x, y, key: cellKey(x, y) });
     }
   }
 
   const remaining = new Set(cells.map((c) => c.key));
   const directionOf = {};
-  const removalOrder = [];
-  const bias = difficultyBiasForLevel(level, size);
+  const bias = difficultyBiasForLevel(level);
 
   while (remaining.size > 0) {
     const candidates = [];
@@ -54,7 +54,7 @@ function generateLevel(level, size, shapeMask) {
       const y = Number(ys);
       const validDirs = [];
       for (const dir of DIRECTIONS) {
-        if (isRayClear(x, y, dir, shapeMask, size, remaining)) validDirs.push(dir);
+        if (isRayClear(x, y, dir, shapeMask, cols, rows, remaining)) validDirs.push(dir);
       }
       if (validDirs.length > 0) candidates.push({ key, x, y, validDirs });
     }
@@ -73,29 +73,38 @@ function generateLevel(level, size, shapeMask) {
     const dir = rngPick(rng, chosen.validDirs);
     directionOf[chosen.key] = dir.name;
     remaining.delete(chosen.key);
-    removalOrder.push(chosen.key);
   }
 
   return {
     level,
-    size,
+    cols,
+    rows,
     shapeMask,
     cells: cells.map((c) => ({ x: c.x, y: c.y, key: c.key, dir: directionOf[c.key] })),
   };
 }
 
-function gridSizeForLevel(level) {
-  return Math.min(23, Math.max(7, Math.round(7 + Math.sqrt(level))));
+function colsForLevel(level) {
+  // רוחב הלוח נשאר מוגבל כדי שגודל התא יישאר קריא וניתן למגע במובייל
+  return Math.min(26, Math.max(13, Math.round(13 + 5 * Math.sqrt(level))));
+}
+
+function rowsForLevel(level, cols) {
+  // גובה הלוח ממשיך לגדול הרבה מעבר לרוחב, כמו במשחק המקור (לוח מוארך שגולשים בו),
+  // וכך הקושי/האורך ממשיכים לעלות גם אחרי שהרוחב הגיע לתקרה שלו
+  const factor = 1 + 2.2 * Math.min(1, Math.sqrt(level / 40));
+  return Math.min(100, Math.max(cols, Math.round(cols * factor)));
 }
 
 function irregularityForLevel(level) {
-  const t = Math.min(1, level / 1000);
-  return 0.35 + 0.5 * t;
+  const t = Math.min(1, Math.sqrt(level / 20));
+  return 0.45 + 0.4 * t;
 }
 
 function buildLevel(level) {
-  const size = gridSizeForLevel(level);
+  const cols = colsForLevel(level);
+  const rows = rowsForLevel(level, cols);
   const rng = createRng(hashSeed('shape-' + level));
-  const shapeMask = generateBlobShape(size, rng, irregularityForLevel(level));
-  return generateLevel(level, size, shapeMask);
+  const shapeMask = generateBlobShape(cols, rows, rng, irregularityForLevel(level));
+  return generateLevel(level, cols, rows, shapeMask);
 }

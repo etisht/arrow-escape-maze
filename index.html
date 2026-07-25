@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>שחרור החצים</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <main id="view-levels" class="view">
+      <header class="app-header">
+        <h1>שחרור החצים</h1>
+        <p class="subtitle">שחררו את כל החצים מהמבוך, שלב אחר שלב</p>
+      </header>
+      <div id="level-select-container"></div>
+    </main>
+
+    <main id="view-game" class="view hidden">
+      <div class="game-topbar">
+        <button id="btn-back" class="icon-btn" aria-label="חזרה">→</button>
+        <div id="level-label">שלב 1</div>
+        <button id="btn-restart" class="icon-btn" aria-label="התחל מחדש">⟲</button>
+      </div>
+      <div id="canvas-wrapper">
+        <canvas id="game-canvas"></canvas>
+      </div>
+      <div id="progress-label"></div>
+    </main>
+
+    <div id="win-overlay" class="overlay hidden">
+      <div class="win-card">
+        <h2>שלב הושלם! 🎉</h2>
+        <div class="win-buttons">
+          <button id="btn-next-level" class="primary-btn">השלב הבא</button>
+          <button id="btn-to-levels" class="secondary-btn">בחירת שלבים</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/rng.js"></script>
+  <script src="js/shape.js"></script>
+  <script src="js/generator.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/levelSelect.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

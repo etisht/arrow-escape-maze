@@ -129,28 +129,34 @@ const Game = (function () {
           color = BLOCKED_COLOR;
         }
       }
-      drawPiece(piece, dx, 0, 1, color);
+      drawPieceCells(piece.cells, piece.exitDir, dx, 0, 1, color);
     }
 
+    // יציאה "כמו נחש": הזנב נחתך בהדרגה (נעלם) בעוד הראש עם החץ ממשיך
+    // להוביל קדימה בכיוון היציאה — לא כל החלק מחליק יחד כגוש נוקשה אחד
     const finishedFades = [];
     for (const [idx, anim] of fadingOut) {
+      const piece = levelData.pieces[idx];
       const p = Math.min(1, (now - anim.start) / SLIDE_MS);
-      const eased = p * p;
-      const dx = anim.dir.dx * cellSize * 1.8 * eased;
-      const dy = anim.dir.dy * cellSize * 1.8 * eased;
-      const alpha = 1 - p;
-      drawPiece(levelData.pieces[idx], dx, dy, alpha, '#3d6cf0');
+      const dx = anim.dir.dx * cellSize * 1.6 * p;
+      const dy = anim.dir.dy * cellSize * 1.6 * p;
+      const alpha = 1 - p * 0.35;
+      const cutIndex = Math.floor(p * piece.cells.length);
+      const visibleCells = piece.cells.slice(cutIndex);
+      if (visibleCells.length > 0) {
+        drawPieceCells(visibleCells, piece.exitDir, dx, dy, alpha, '#3d6cf0');
+      }
       if (p >= 1) finishedFades.push(idx);
     }
     for (const idx of finishedFades) fadingOut.delete(idx);
   }
 
-  function drawPiece(piece, dx, dy, alpha, color) {
-    for (let i = 0; i < piece.cells.length - 1; i++) {
-      drawConnector(piece.cells[i], piece.cells[i + 1], dx, dy, alpha, color);
+  function drawPieceCells(cells, exitDirName, dx, dy, alpha, color) {
+    for (let i = 0; i < cells.length - 1; i++) {
+      drawConnector(cells[i], cells[i + 1], dx, dy, alpha, color);
     }
-    const head = piece.cells[piece.cells.length - 1];
-    const dir = DIRECTIONS.find((d) => d.name === piece.exitDir);
+    const head = cells[cells.length - 1];
+    const dir = DIRECTIONS.find((d) => d.name === exitDirName);
     drawArrowHead(head.x, head.y, dir, dx, dy, alpha, color);
   }
 
